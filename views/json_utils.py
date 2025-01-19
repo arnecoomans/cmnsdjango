@@ -1,3 +1,4 @@
+from django.views import View
 from django.conf import settings
 from django.middleware.csrf import CsrfViewMiddleware
 from django.core.exceptions import PermissionDenied
@@ -6,7 +7,7 @@ from django.template.loader import render_to_string
 from django.core.serializers import serialize
 from django.apps import apps
 
-class JsonUtils:
+class JsonUtils(View):
   """
   Json Utility Class
   Extend this class to include basic and reusable utilities for

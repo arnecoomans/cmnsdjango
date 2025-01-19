@@ -14,16 +14,15 @@ class JsonUtils(View):
   handling JSON responses in Django views.
   """
 
-  def __init__(self, request, *args, **kwargs):
-    self.request = request
-    self.args = args
-    self.kwargs = kwargs
+  def __init__(self, *args, **kwargs):
+    super().__init__(**kwargs)
     self.model = None
     self.object = None
     self.attribute = None
     self.value = None
     self.parent = None
     self.status = 200
+    self.csrf_token = None
     self.messages = []
 
   def get_value_from_request(self, key, default=None):
@@ -62,10 +61,9 @@ class JsonUtils(View):
 
   def check_csrf_token(self):
     """
-    Check the CSRF token in the current request if DEBUG mode is enabled.
+    Check the CSRF token in the current request if DEBUG mode not is enabled.
 
-    This function validates the CSRF token using Django's CsrfViewMiddleware. It is intended for development
-    environments where DEBUG=True, allowing for additional debugging of CSRF-related issues.
+    This function validates the CSRF token using Django's CsrfViewMiddleware. 
 
     The CSRF token is searched for in the following sources:
     - Headers (e.g., X-CSRFToken)
@@ -83,11 +81,11 @@ class JsonUtils(View):
       except PermissionDenied as e:
         return JsonResponse({"error": str(e)}, status=403)
     """
-    if not settings.DEBUG:
-      return  # Skip CSRF checks in non-debug environments
+    if settings.DEBUG:
+      return # Skip CSRF checks in non-debug environments
     # Attempt to extract CSRF token from the request
-    csrf_token = self.get_value_from_request("csrfmiddlewaretoken", default=None)
-    if not csrf_token:
+    self.csrf_token = self.get_value_from_request("csrfmiddlewaretoken", default=None)
+    if not self.csrf_token:
       raise PermissionDenied("CSRF token is missing or invalid.")
     # Validate the CSRF token
     try:
@@ -109,9 +107,15 @@ class JsonUtils(View):
     Raises:
         ValueError: If the model parameter is missing or invalid.
     """
+    if self.model:
+      return self.model
     model_name = self.get_value_from_request('model')
     if not model_name:
       raise ValueError("The 'model' parameter is required but was not provided.")
+    # Validate the format of the model_name
+    if '.' not in model_name:
+      raise ValueError(f"Invalid model parameter format. Expected 'app_label.ModelName', got '{model_name}'.")
+
     try:
       app_label, model_class_name = model_name.split('.')
       model = apps.get_model(app_label=app_label, model_name=model_class_name)
@@ -121,6 +125,7 @@ class JsonUtils(View):
       elif hasattr(model, 'allow_read_attributes'):
         if not model.allow_read_attributes():
           raise ValueError(f"Read access to the model '{model_name}' is not allowed.")
+      self.model = model
       return model
     except ValueError as e:
       raise ValueError(f"Invalid model parameter format. Expected 'app_label.ModelName'. Error: {str(e)}")
@@ -219,6 +224,9 @@ class JsonUtils(View):
       response_data["_meta"] = {
         "user_id": self.request.user.id,
         "username": self.request.user.username,
-        "object": serialize(self.object),
+        "model": str(self.model) if self.model else None,
+        "object": str(self.object) if self.object else None,
+        "attribute": self.attribute if self.attribute else None,
+        "debug": settings.DEBUG,
       }
     return JsonResponse(response_data)

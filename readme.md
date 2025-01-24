@@ -3,7 +3,6 @@
 This repository contains apps, data and scripts that support running 
 CMNS django projects.
 
-
 ## helpers/update.sh
 Update.sh is a shell script that handles updating the django project on the remote host.
 It makes a git pull and based on the git output, takes the following actions
@@ -24,6 +23,13 @@ CMNS projects. By centralizing these models and reusable views, the maintenance 
 CMNS projects decreases.
 
 ### Installation instructions
+
+# Initialize submodule
+git submodule init
+
+# Fetch submodule content
+git submodule update --recursive --remote
+
 - In your project settins.py:
   - Under INSTALLED_APPS
     - Add: 'cmnsdjango',

@@ -69,12 +69,13 @@ class JsonUtils(View):
     Raises:
       PermissionDenied: If the CSRF token is missing or invalid.
     """
-    if settings.DEBUG:
-      self.messages.add("CSRF token check skipped in DEBUG mode.", "debug")
-      return
     self.csrf_token = self.get_value_from_request("csrfmiddlewaretoken", default=None)
     if not self.csrf_token:
-      raise PermissionDenied(_('csrf token is missing or invalid.').capitalize())
+      if settings.DEBUG:
+        self.messages.add("No CSRF token and CSRF token check skipped in DEBUG mode.", "debug")
+        return
+      else:
+        raise PermissionDenied(_('csrf token is missing or invalid.').capitalize())
     try:
       CsrfViewMiddleware().process_view(self.request, None, (), {})
     except PermissionDenied:
@@ -251,6 +252,7 @@ class JsonUtils(View):
           "method": self.request.method,
           "handler": self.__class__.__name__,
           "resolver": self.request.resolver_match.url_name,
+          "csrf": "present" if self.csrf_token else "missing",
         },
       }
       for kwarg in self.kwargs:

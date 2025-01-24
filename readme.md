@@ -43,8 +43,25 @@ for app in ['cmnsdjango', ]:
 MEDIA_URL = 'files/'
 MEDIA_ROOT = BASE_DIR.joinpath('public').joinpath(MEDIA_URL)
 ```
-
 - Apply migrations
+
+### Settings
+
+Concider adding the following settings when using json_utils. Set defaults in settings.py
+and overwrite the value per setting in the model definition.
+```
+# Default value to allow reading, suggesting and setting attributes from models via JSON API
+# Use True to allow reading attributes from all models
+# Use "Authenticated" to allow reading attributes only for authenticated users
+# Use "Staff" to allow reading attributes only for staff members
+# Use False to disallow reading attributes from all models
+# When not set, it defaults to False
+# Setting can be overridden in the model
+ALLOW_READ_ATTRIBUTES = False 
+ALLOW_SUGGEST_ATTRUBUTES = False
+ALLOW_SET_ATTRIBUTES = False
+```
+
 
 ### Usage Instructions
 To extend your model with a CMNSDjango base-model:

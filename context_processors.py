@@ -18,7 +18,7 @@ from django.conf import settings
 
 def setting_data(request):
   ''' Re-useable defaults'''
-  default_ajax_load = False
+  default_ajax_load = True
   ''' Return Context Variables 
       with default fallback values if not set in project/settings.py 
   '''

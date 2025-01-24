@@ -3,10 +3,15 @@ from django.conf import settings
 from django.middleware.csrf import CsrfViewMiddleware
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.template.loader import render_to_string
-from django.core.serializers import serialize
 from django.apps import apps
+from django.template.loader import render_to_string
+from django.template.exceptions import TemplateDoesNotExist
+from django.utils.translation import gettext_lazy as _
+from django.db.models import Q
+from django.db.models.fields.related import ForeignKey, ManyToManyField, OneToOneField
+import json
 
+from .messages import Messages
 class JsonUtils(View):
   """
   Json Utility Class
@@ -18,12 +23,13 @@ class JsonUtils(View):
     super().__init__(**kwargs)
     self.model = None
     self.object = None
-    self.attribute = None
+    self.attributes = None
     self.value = None
     self.parent = None
     self.status = 200
     self.csrf_token = None
-    self.messages = []
+    self.payload = []
+    self.messages = Messages()
 
   def get_value_from_request(self, key, default=None):
     """
@@ -40,193 +46,304 @@ class JsonUtils(View):
     Returns:
         str or None: The value associated with the key, or the default value if not found.
     """
-    # Check URL parameters
     if key in self.kwargs:
       return self.kwargs[key]
-    # Check GET parameters
     value = self.request.GET.get(key, None)
     if value:
       return value
-    # Check POST parameters
     value = self.request.POST.get(key, None)
     if value:
       return value
-    # Check headers (case-insensitive)
     header_key = f"HTTP_{key.replace('-', '_').upper()}"
     value = self.request.META.get(header_key, None)
     if value:
       return value
-    # Key not found
     return default
 
   def check_csrf_token(self):
     """
     Check the CSRF token in the current request if DEBUG mode not is enabled.
 
-    This function validates the CSRF token using Django's CsrfViewMiddleware. 
-
-    The CSRF token is searched for in the following sources:
-    - Headers (e.g., X-CSRFToken)
-    - GET parameters
-    - POST data
-
-    If the token is missing or invalid, a PermissionDenied exception is raised.
+    This function validates the CSRF token using Django's CsrfViewMiddleware.
 
     Raises:
       PermissionDenied: If the CSRF token is missing or invalid.
-
-    Example Usage:
-      try:
-        self.check_csrf_token()
-      except PermissionDenied as e:
-        return JsonResponse({"error": str(e)}, status=403)
     """
     if settings.DEBUG:
-      return # Skip CSRF checks in non-debug environments
-    # Attempt to extract CSRF token from the request
+      self.messages.add("CSRF token check skipped in DEBUG mode.", "debug")
+      return
     self.csrf_token = self.get_value_from_request("csrfmiddlewaretoken", default=None)
     if not self.csrf_token:
-      raise PermissionDenied("CSRF token is missing or invalid.")
-    # Validate the CSRF token
+      raise PermissionDenied(_('csrf token is missing or invalid.').capitalize())
     try:
       CsrfViewMiddleware().process_view(self.request, None, (), {})
     except PermissionDenied:
-      raise PermissionDenied("Invalid CSRF token.")
+      raise PermissionDenied(_('invalid csrf token.').capitalize())
 
-
-  def get_model(self):
+  def get_model(self, model_name=None):
     """
     Retrieve a model class based on the 'model' parameter from the request.
-
-    This function uses the 'model' parameter retrieved via get_value_from_request() to dynamically
-    fetch the corresponding model class from the Django apps registry.
-
-    Returns:
-        Model class if found, otherwise raises an Exception.
-
-    Raises:
-        ValueError: If the model parameter is missing or invalid.
     """
     if self.model:
       return self.model
-    model_name = self.get_value_from_request('model')
+    model_name = model_name if model_name else self.get_value_from_request('model')
     if not model_name:
-      raise ValueError("The 'model' parameter is required but was not provided.")
-    # Validate the format of the model_name
-    if '.' not in model_name:
-      raise ValueError(f"Invalid model parameter format. Expected 'app_label.ModelName', got '{model_name}'.")
-
+      raise ValueError(_('the model parameter is required but was not provided.').capitalize())
+    self.model = self.get_specific_model(model_name)
+    return self.model
+  
+  def get_specific_model(self, model_name, action='read'):
     try:
-      app_label, model_class_name = model_name.split('.')
-      model = apps.get_model(app_label=app_label, model_name=model_class_name)
-      if model is None:
-        raise ValueError(f"The model '{model_name}' could not be found.")
-      # Check if the model allows read access
-      elif hasattr(model, 'allow_read_attributes'):
-        if not model.allow_read_attributes():
-          raise ValueError(f"Read access to the model '{model_name}' is not allowed.")
+      matching_models = []
+      for app_config in apps.get_app_configs():
+        try:
+          model = app_config.get_model(model_name)
+          if model:
+            matching_models.append(model)
+        except LookupError:
+          continue
+      if len(matching_models) == 0:
+        raise ValueError(_("no model with the name '{}' could be found.".format(model_name)).capitalize())
+      elif len(matching_models) > 1:
+        raise ValueError(_("multiple models with the name '{}' were found. specify 'app_label.modelname' instead.".format({model_name})).capitalize())
+      model = matching_models[0]
+      """ Authentication check
+          Raise ValueError if the model does not allow access via the 'allow_read_attributes' attribute """
+      if getattr(model, f'allow_{action}_attributes', getattr(settings, 'ALLOW{action.upper()}_ATTRIBUTES', False)) is False:
+        raise ValueError(_("{} access to the model '{}' is not allowed".format(action, model_name)).capitalize())
+      elif str(getattr(model, 'allow_{action}_attributes', getattr(settings, 'ALLOW_{action.upper()}_ATTRIBUTES', False))).lower()[:4] == 'auth' and not self.request.user.is_authenticated:
+        raise ValueError(_("{} access to the model '{}' is not allowed for unauthenticated users".format(action, model_name)).capitalize())
+      elif str(getattr(model, 'allow_{action}_attributes', getattr(settings, 'ALLOW_{action.upper()}_ATTRIBUTES', False))).lower()[:5] == 'staff' and not self.request.user.is_staff:
+        raise ValueError(_("{} access to the model '{}' is not allowed for non-staff users".format(action, model_name)).capitalize())
+      """ Authentication check passed: set model """
       self.model = model
       return model
     except ValueError as e:
-      raise ValueError(f"Invalid model parameter format. Expected 'app_label.ModelName'. Error: {str(e)}")
+      raise ValueError(_('error when accessing model: {}.').format(e).capitalize())
 
+  def get_model_of_field(self, field_name):
+    if hasattr(field_name, '_meta'):
+      # 1-to-1 Relation
+      model = field_name._meta.model_name
+    elif isinstance(field_name, type):
+      model = field_name.__name__
+    elif hasattr(field_name, 'field'):
+      # Foreign Key Relation
+      model = field_name.field.related_model.__name__
+    elif hasattr(field_name, 'model'):
+      # Many-to-Many Relation
+      model = field_name.model.__name__
+    elif isinstance(field_name, bool):
+      model = 'Boolean'
+    else:
+      raise ValueError(_("invalid field to get model of: {}").format(self.get_value_from_request('attribute')))
+    model = self.get_specific_model(model)
+    return model
+  
   def get_object(self):
     """
     Retrieve an object instance based on the model and identifiers (pk, slug) from the request.
-
-    This function uses the `get_model` method to fetch the model and then attempts to retrieve
-    an object instance using the provided primary key (pk), slug, or both.
-
-    Returns:
-        Object instance if found, otherwise raises an Exception.
-
-    Raises:
-        ValueError: If neither pk nor slug is provided, or the object cannot be found.
     """
+    if self.object:
+      return self.object
     model = self.get_model()
-    # Retrieve pk and slug from the request
     pk = self.get_value_from_request('pk')
     slug = self.get_value_from_request('slug')
     if not pk and not slug:
-      raise ValueError("Either 'pk' or 'slug' parameter must be provided to retrieve an object.")
+      raise ValueError(_('either pk or slug parameter must be provided to retrieve an object.').capitalize())
     try:
-      # Attempt to retrieve the object based on the provided identifiers
       if pk and slug:
-        obj = model.objects.get(pk=pk, slug=slug)
+        obj = model.objects.filter(pk=pk, slug=slug)
       elif pk:
-        obj = model.objects.get(pk=pk)
+        obj = model.objects.filter(pk=pk)
       elif slug:
-        obj = model.objects.get(slug=slug)
+        obj = model.objects.filter(slug=slug)
       else:
-        raise ValueError("Unable to determine the object retrieval criteria.")
-      # Apply status and visibility if they exist
+        raise ValueError(_('unable to determine the object retrieval criteria.').capitalize())
       if hasattr(self, 'filter_status'):
         obj = self.filter_status(obj)
       if hasattr(self, 'filter_visibility'):
         obj = self.filter_visibility(obj)
+      if obj.count() == 0:
+        raise ValueError(_('the requested object does no longer exist.').capitalize())
+      elif obj.count() > 1:
+        raise ValueError(_('multiple objects were found.').capitalize())
+      else:
+        obj = obj.first()
+      self.object = obj
       return obj
     except model.DoesNotExist:
-      raise ValueError("The requested object does not exist.")
+      raise ValueError(_('the requested object does not exist.').capitalize())
     except Exception as e:
-      raise ValueError(f"An error occurred while retrieving the object: {str(e)}")
+      raise ValueError(_("an error occurred while retrieving the object: {}".format({str(e)})).capitalize())
 
-
-  def get_attribute(self):
+  def get_attributes(self):
     """
     Retrieve a specific attribute from an object.
-
-    This function uses `get_object()` to fetch the object and retrieves
-    the value of a specific attribute defined in the request.
-
-    Returns:
-        The value of the attribute if found, otherwise raises an Exception.
-
-    Raises:
-        ValueError: If the attribute is missing, invalid, or cannot be accessed.
     """
-    # Get the attribute name from the request
+    if self.attributes:
+      return self.attributes
     attribute = self.get_value_from_request('attribute')
     if not attribute:
-      raise ValueError("The 'attribute' parameter is required but was not provided.")
-    # Retrieve the object
+      raise ValueError(_('the attribute parameter is required but was not provided.').capitalize())
     obj = self.get_object()
-    # Check if the attribute exists in the object
     if not hasattr(obj, attribute):
-      raise ValueError(f"The attribute '{attribute}' does not exist on the object.")
-    # Retrieve the attribute value
+      raise ValueError(_("the attribute {} does not exist on the object.".format({attribute})).capitalize())
     value = getattr(obj, attribute)
-    # If the attribute is callable (e.g., a method), call it
-    if callable(value):
-      try:
-        value = value()
-      except Exception as e:
-        raise ValueError(f"Error calling the attribute '{attribute}': {str(e)}")
     return value
+  
+  def search_attributes(self, attributes, q=False):
+    if not q:
+      q = self.get_value_from_request('q', False)
+    if q:
+      searchable_fields = ['name', 'title', 'description']
+      if hasattr(attributes, 'searchable_fields'):
+        searchable_fields += attributes.searchable_fields
+      attributes = self.filter_queryset_by_fields(attributes, searchable_fields, q)
+    return attributes
+  
+  def render_attribute(self, attribute, format='html'):
+    """ Returns the attribute as string.
+        If a template exists in templates/objects, the string will be 
+        formatted by the template.
+    """
+    model_name = attribute.__class__.__name__.lower()
+    rendered_attribute = None
+    try:
+      # Try to find the attribute template to render in templates/objects/
+      rendered_attribute = render_to_string(f'objects/{ model_name }.{ format }', {model_name: attribute})
+      if format == 'json':
+        rendered_attribute = json.loads(rendered_attribute)
+    except TemplateDoesNotExist:
+      # If the template does not exist, return the string representation of the attribute
+      self.messages.add(_("{} template for {} not found in objects/").format(format, model_name).capitalize(), "debug")
+      rendered_attribute = str(attribute)
+    except Exception as e:
+      self.messages.add(_("error rendering attribute: {}").format(e).capitalize(), "debug")
+      rendered_attribute = str(attribute)
+    return rendered_attribute
 
   def return_response(self):
     """
     Prepare and return a structured JSON response.
-
-    This function structures the stored data and includes a '_meta' 
-    field if the request.user is a staff member.
-
-    Returns:
-        JsonResponse: A JSON response containing the structured data.
     """
+    if self.request.user.is_staff:
+      self.messages.user_is_staff = True
     response_data = {
       "status": self.status,
-      "messages": self.messages,
-      "payload": None,  # Placeholder for rendered content
+      "messages": self.messages.get(),
+      "payload": self.payload,
     }
-
-    # Add _meta information if the user is staff
     if self.request.user.is_staff:
-      response_data["_meta"] = {
-        "user_id": self.request.user.id,
-        "username": self.request.user.username,
-        "model": str(self.model) if self.model else None,
-        "object": str(self.object) if self.object else None,
-        "attribute": self.attribute if self.attribute else None,
+      response_data["__meta"] = {
+        "model": str(self.model) if self.model else self.model,
+        "object": str(self.object) if self.object else self.object,
+        "attribute": self.get_value_from_request('attribute'),
         "debug": settings.DEBUG,
+                "request_user": {
+          "id": self.request.user.id,
+          "username": self.request.user.username,
+          "is_staff": self.request.user.is_staff,
+          "is_superuser": self.request.user.is_superuser,
+        },
+        "request": {
+          "path": self.request.path,
+          "method": self.request.method,
+          "handler": self.__class__.__name__,
+          "resolver": self.request.resolver_match.url_name,
+        },
       }
+      for kwarg in self.kwargs:
+        response_data['__meta']['request']['url_' + kwarg] = self.get_value_from_request(kwarg)
+      if self.get_value_from_request('q', False):
+        response_data['__meta']['request']['q'] = self.get_value_from_request('q')
     return JsonResponse(response_data)
+  
+  def get_unused_related_objects(self, model, instance, related_field_name, extra_filters=None):
+    """
+    Retrieve all related objects for a model's field that are not associated with the given instance.
+
+    Args:
+        model (models.Model): The model to query the related objects.
+        instance (models.Model): The specific instance of the model.
+        related_field_name (str): The name of the related field on the model.
+        extra_filters (dict, optional): Additional filters to apply to the unused related objects.
+
+    Returns:
+        QuerySet: A queryset of unused related objects.
+
+    Raises:
+        ValueError: If the related_field_name is invalid for the given model.
+    """
+    # Validate the related_field_name
+    if not hasattr(instance, related_field_name):
+      raise ValueError(f"'{related_field_name}' is not a valid field for '{model.__name__}'.")
+
+    # Get the related manager for the field
+    related_manager = getattr(instance, related_field_name)
+
+    # Get the primary key of related objects that are already associated
+    used_related_ids = related_manager.values_list('pk', flat=True)
+
+    # Query the related model for objects not in the used IDs
+    related_model = related_manager.model
+    unused_related_objects = related_model.objects.exclude(pk__in=used_related_ids)
+
+    # Apply additional filters if provided
+    if extra_filters:
+      unused_related_objects = unused_related_objects.filter(**extra_filters)
+
+    return unused_related_objects
+
+  def filter_queryset_by_fields(self, queryset, searchable_fields, q):
+    """
+    Filters a queryset based on a search term in the specified fields.
+
+    Supports many-to-many, one-to-one, and direct fields. Provides a clear
+    error message for unsupported field types.
+
+    Args:
+        queryset (QuerySet): The queryset to filter.
+        searchable_fields (list): A list of fields to search.
+        q (str): The search term.
+
+    Returns:
+        QuerySet: The filtered queryset.
+
+    Raises:
+        ValueError: If a field is unsupported for filtering.
+    """
+    if not q:
+      return queryset  # Return unfiltered queryset if no search term is provided
+
+    model = queryset.model
+    query = Q()
+
+    # Get all valid field names for the model
+    valid_field_names = [f.name for f in model._meta.get_fields()]
+
+    for field_name in searchable_fields:
+      # Skip non-existent fields
+      if field_name not in valid_field_names:
+        continue
+
+      # Get the field definition
+      field = next((f for f in model._meta.get_fields() if f.name == field_name), None)
+
+      # Handle different field types
+      if isinstance(field, (ForeignKey, OneToOneField)):
+        # Search related models
+        related_model = field.related_model
+        related_query = Q(**{f"{field_name}__{f.name}__icontains": q for f in related_model._meta.get_fields() if hasattr(f, 'name')})
+        query |= related_query
+      elif isinstance(field, ManyToManyField):
+        # Search related many-to-many fields
+        query |= Q(**{f"{field_name}__name__icontains": q})
+      elif hasattr(field, "attname"):  # Direct fields
+        query |= Q(**{f"{field_name}__icontains": q})
+      else:
+        # Unsupported field types are skipped
+        continue
+
+    return queryset.filter(query)
+

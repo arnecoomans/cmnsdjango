@@ -13,38 +13,34 @@ class JsonGetAttributes(JsonUtils):
     try:
       # Check CSRF token
       self.check_csrf_token()
-      # Fetch the attributes and
-      # add the attributes to the payload
-      attributes = self.get_attributes()
+      # Fetch current valies of field in model
+      # field and model are implied in get_field_values()
+      values = self.get_field_value()
       # Process search query
-      attributes = self.search_attributes(attributes)
-      if hasattr(attributes, 'all') and callable(attributes.all):
-        # If attributes is a queryset, display each attribute
-        for attribute in attributes.all():
-          self.payload.append(self.render_attribute(attribute))
-      elif isinstance(attributes, (list, tuple)):
-        # If attributes is a list or tuple, display each attribute
-        for attribute in attributes:
-          self.payload.append(self.render_attribute(attribute))
-      elif callable(attributes):
-        # If attributes is a callable function, add its result to payload
-        try:
-          self.payload.append(attributes())  # Add the result to payload
-        except Exception as e:
-          # If the function raises an exception, return it as JSON
-          raise ValueError(_('error when fetching attribute: {}').format(str(e)).capitalize())
-      # Handle textfield values and apply markdown filter if "markdown" is mentioned in the 
-      # field's help_text (example: "This field supports markdown")
-      elif (
-        isinstance(attributes, str) and 
-        isinstance(self.model._meta.get_field(self.get_value_from_request('attribute')), TextField) and
-        "markdown" in (self.model._meta.get_field(self.get_value_from_request('attribute')).help_text or "").lower()
-      ):
-        self.payload.append(markdown(attributes))
-      # Handle non-iterable values directly
+      values = self.search_queryset(values)
+      # Return the value as rendered response
+      if callable(values):
+        # Return the function outcome
+        self.messages.add(_("The attribute is a callable function."), 'debug')
+        self.payload.append(self.render_attribute(values()))
+      elif isinstance(values, (list, tuple)):
+        # For each value in the list, render the value
+        self.messages.add(_("The attribute is a list or tuple."), 'debug')
+        for value in values:
+          self.payload.append(self.render_attribute(value))
       else:
-        self.payload.append(self.render_attribute(attributes))
-      # Return the response
+        # Try to render each value in the queryset
+        try:
+          for value in values.all():
+            self.payload.append(self.render_attribute(value))
+        except:
+          try:
+            # If the queryset is not iterable, render the value
+            self.payload.append(self.render_attribute(values))
+          except:
+            # If the queryset is not renderable, add a string representation
+            # of the value to the payload
+            self.payload.append(self.render_attributes(str(values)))
       return self.return_response()
     except PermissionDenied as e:
         return JsonResponse({"error": str(e)}, status=403)

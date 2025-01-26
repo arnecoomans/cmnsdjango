@@ -11,17 +11,14 @@ class JsonGetSuggestions(JsonUtils):
     try:
       # Check CSRF token
       self.check_csrf_token()
-      # Get object
-      self.object = self.get_object()
-      # Get Suggestions Field
-      attribute_field = self.get_value_from_request('attribute')
-      attribute_model = self.get_specific_model(self.get_value_from_request('attribute'), action='suggest')
-      # suggestion_field = str(self.get_model_of_field(self.get_attributes()))
-      # Get Suggestion Model from Field
-      suggestions = "?"
-      suggestions = self.get_unused_related_objects(self.model, self.object, attribute_field, extra_filters=None)
+      # Get Field to fetch suggestions for
+      current_values = self.get_field_value()
+      # Get Model of Field to query for all objects
+      model = self.get_model('suggest')
+      suggestion_model = self.get_field_model()
+      suggestions = self.get_unused_related_objects(model=suggestion_model, exclude_queryset=self.get_field_value(), extra_filters=None)
       # Process search query
-      suggestions = self.search_attributes(suggestions)
+      suggestions = self.search_queryset(suggestions)
       # Add the suggestions to the payload
       for suggestion in suggestions:
         self.payload.append(self.render_attribute(suggestion, format='json'))

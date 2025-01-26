@@ -8,8 +8,24 @@ from django.template.loader import render_to_string
 from django.template.exceptions import TemplateDoesNotExist
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Q
-from django.db.models.fields.related import ForeignKey, ManyToManyField, OneToOneField
+from django.db import models
+
+# from django.db.models.fields.related import ForeignKey, ManyToManyField, OneToOneField
+from django.db.models import (
+    ForeignKey,
+    ManyToManyField,
+    OneToOneField,
+    TextField,
+    CharField,
+    IntegerField,
+    BooleanField,
+    DateField,
+    DateTimeField,
+    FloatField,
+)
+from markdown import markdown
 import json
+from django.db.models import TextField
 
 from .messages import Messages
 class JsonUtils(View):
@@ -21,16 +37,20 @@ class JsonUtils(View):
 
   def __init__(self, *args, **kwargs):
     super().__init__(**kwargs)
-    self.model = None
-    self.object = None
-    self.attributes = None
-    self.value = None
-    self.parent = None
-    self.status = 200
+    self.model = None         # Model of the object
+    self.object = None        # The object
+    self.field = None         # The field of the object
+    self.field_name = None    # The name of the field of the object
+    self.field_model = None   # The model of the field of the object
+    self.field_value = None   # The value of the field of the object
+    self.new_value = None     # The new value of the field of the object
+    self.attribute = None
+    self.status = 200   # Default status code
     self.csrf_token = None
     self.payload = []
     self.messages = Messages()
 
+  ''' Value Retrieve Functions '''
   def get_value_from_request(self, key, default=None):
     """
     Retrieve a value from the request in the following order of priority:
@@ -60,6 +80,24 @@ class JsonUtils(View):
       return value
     return default
 
+  def get_new_value(self, field=None):
+    # Get the value for the request parameters. 
+    # The value can be stored in get, post or
+    # query parameters, and can be id, slug or value.
+    if self.new_value:
+      if field in self.new_value.keys():
+        return self.new_value[field]
+      return self.new_value
+    # Loop through the possible keys to get the value
+    for key in ['set_id', 'set_slug', 'get_id', 'get_slug', 'obj_id', 'obj_slug', 'value']:
+      value = self.get_value_from_request(key, False)
+      if value:
+        for word in ['set', 'get', 'obj']:
+          key = key.replace(f"{ word }_" , '')  
+        self.new_value = {'key': key, 'value': value,}
+        return self.get_new_value(field) # Recursively call the function to get the value if field is specified
+
+  ''' Security Functions ''' 
   def check_csrf_token(self):
     """
     Check the CSRF token in the current request if DEBUG mode not is enabled.
@@ -81,40 +119,41 @@ class JsonUtils(View):
     except PermissionDenied:
       raise PermissionDenied(_('invalid csrf token.').capitalize())
 
-  def get_model(self, model_name=None):
+  ''' Model Functions '''
+  def get_model(self, model_name=None, action='read'):
     """
     Retrieve a model class based on the 'model' parameter from the request.
     """
     if self.model:
       return self.model
+    # Get the model name from the request
     model_name = model_name if model_name else self.get_value_from_request('model')
     if not model_name:
       raise ValueError(_('the model parameter is required but was not provided.').capitalize())
-    self.model = self.get_specific_model(model_name)
-    return self.model
-  
-  def get_specific_model(self, model_name, action='read'):
+    # Get the specific model supplied by the model name
     try:
+      # Loop through all installed apps to find the first
+      # model with the specified name
       matching_models = []
       for app_config in apps.get_app_configs():
         try:
-          model = app_config.get_model(model_name)
+          model = app_config.get_model(str(model_name))
           if model:
             matching_models.append(model)
         except LookupError:
           continue
       if len(matching_models) == 0:
-        raise ValueError(_("no model with the name '{}' could be found.".format(model_name)).capitalize())
+        raise ValueError(_("no model with the name '{}' could be found".format(model_name)).capitalize())
       elif len(matching_models) > 1:
         raise ValueError(_("multiple models with the name '{}' were found. specify 'app_label.modelname' instead.".format({model_name})).capitalize())
       model = matching_models[0]
       """ Authentication check
-          Raise ValueError if the model does not allow access via the 'allow_read_attributes' attribute """
-      if getattr(model, f'allow_{action}_attributes', getattr(settings, 'ALLOW{action.upper()}_ATTRIBUTES', False)) is False:
+          Raise ValueError if the model does not allow access via the 'allow_read_attribute' attribute """
+      if getattr(model, f'allow_{action}_attribute', getattr(settings, 'ALLOW{action.upper()}_attribute', False)) is False:
         raise ValueError(_("{} access to the model '{}' is not allowed".format(action, model_name)).capitalize())
-      elif str(getattr(model, 'allow_{action}_attributes', getattr(settings, 'ALLOW_{action.upper()}_ATTRIBUTES', False))).lower()[:4] == 'auth' and not self.request.user.is_authenticated:
+      elif str(getattr(model, 'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower()[:4] == 'auth' and not self.request.user.is_authenticated:
         raise ValueError(_("{} access to the model '{}' is not allowed for unauthenticated users".format(action, model_name)).capitalize())
-      elif str(getattr(model, 'allow_{action}_attributes', getattr(settings, 'ALLOW_{action.upper()}_ATTRIBUTES', False))).lower()[:5] == 'staff' and not self.request.user.is_staff:
+      elif str(getattr(model, 'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower()[:5] == 'staff' and not self.request.user.is_staff:
         raise ValueError(_("{} access to the model '{}' is not allowed for non-staff users".format(action, model_name)).capitalize())
       """ Authentication check passed: set model """
       self.model = model
@@ -122,25 +161,7 @@ class JsonUtils(View):
     except ValueError as e:
       raise ValueError(_('error when accessing model: {}.').format(e).capitalize())
 
-  def get_model_of_field(self, field_name):
-    if hasattr(field_name, '_meta'):
-      # 1-to-1 Relation
-      model = field_name._meta.model_name
-    elif isinstance(field_name, type):
-      model = field_name.__name__
-    elif hasattr(field_name, 'field'):
-      # Foreign Key Relation
-      model = field_name.field.related_model.__name__
-    elif hasattr(field_name, 'model'):
-      # Many-to-Many Relation
-      model = field_name.model.__name__
-    elif isinstance(field_name, bool):
-      model = 'Boolean'
-    else:
-      raise ValueError(_("invalid field to get model of: {}").format(self.get_value_from_request('attribute')))
-    model = self.get_specific_model(model)
-    return model
-  
+  ''' Object functions '''
   def get_object(self):
     """
     Retrieve an object instance based on the model and identifiers (pk, slug) from the request.
@@ -178,30 +199,110 @@ class JsonUtils(View):
     except Exception as e:
       raise ValueError(_("an error occurred while retrieving the object: {}".format({str(e)})).capitalize())
 
-  def get_attributes(self):
+  ''' Field Functions '''
+  def get_field(self, field_name=None):
     """
     Retrieve a specific attribute from an object.
     """
-    if self.attributes:
-      return self.attributes
-    attribute = self.get_value_from_request('attribute')
-    if not attribute:
-      raise ValueError(_('the attribute parameter is required but was not provided.').capitalize())
+    if self.field:
+      return self.field
+    # Fetch the field name from the request
+    field = field_name if field_name else self.get_value_from_request('field')
+    if not field:
+      raise ValueError(_('the field parameter is required but was not provided.').capitalize())
     obj = self.get_object()
-    if not hasattr(obj, attribute):
-      raise ValueError(_("the attribute {} does not exist on the object.".format({attribute})).capitalize())
-    value = getattr(obj, attribute)
+    if not hasattr(obj, field):
+      raise ValueError(_("the attribute {} does not exist on the object.".format({field})).capitalize())
+    value = getattr(obj, field)
     return value
   
-  def search_attributes(self, attributes, q=False):
+  def get_field_name(self, field=None):
+    if self.field_name:
+      return self.field_name
+    if not field:
+      field = self.get_value_from_request('field')
+    self.field_name = self.get_model()._meta.get_field(field)
+    return self.get_field_name(field) # Recursively call the function to get the value if field is specified
+  
+  def get_field_model(self, field=None):
+    if self.field_model:
+      return self.field_model
+    if not field:
+      field = self.get_value_from_request('field')
+    self.field_model = self.get_object()._meta.get_field(field).related_model
+    return self.get_field_model(field) # Recursively call the function to get the value if field is specified
+  
+  def get_field_value(self, field=None):
+    if self.field_value != None:
+      return self.field_value
+    if not field:
+      field = self.get_value_from_request('field')
+    field = self.get_field(field)
+    # Based on the field model and type, retrieve the value
+    if hasattr(field, 'all') and callable(field.all):
+      # If attributes is a queryset, display each attribute
+      result = field.all()  
+    elif callable(field):
+      # If attributes is a callable function, add its result to payload
+      try:
+        result = field()
+      except Exception as e:
+        # If the function raises an exception, return it as JSON
+        raise ValueError(_('error when fetching field: {}').format(str(e)).capitalize())
+    elif (
+      # Handle textfield values and apply markdown filter if "markdown" is mentioned in the 
+      # field's help_text (example: "This field supports markdown")
+      isinstance(field, str) and 
+      isinstance(self.get_model()._meta.get_field(self.get_value_from_request('field')), TextField) and
+      "markdown" in (self.get_model()._meta.get_field(self.get_value_from_request('field')).help_text or "").lower()
+    ):
+      result = markdown(field)
+    # Handle non-iterable values directly
+    else:
+      result = field
+    self.field_value = result
+    return self.get_field_value(field) # Recursively call the function to get the value if field is specified
+
+  def is_related_field(self, field_name=None):
+    """
+    Check if a field is a related field.
+    """
+    field = field_name if field_name else self.get_value_from_request('field')
+    if not field:
+      raise ValueError(_('the field parameter is required but was not provided.').capitalize())
+    return isinstance(self.get_field_name(field), (ForeignKey, ManyToManyField, OneToOneField))
+
+  def is_value_field(self, field_name=None):
+    """
+    Check if a field is a value field.
+    """
+    field = field_name if field_name else self.get_value_from_request('field')
+    if not field:
+      raise ValueError(_('the field parameter is required but was not provided.').capitalize())
+    return isinstance(self.get_field_name(field), (TextField, CharField, IntegerField, BooleanField, DateField, DateTimeField, FloatField))
+
+
+  def search_queryset(self, queryset, q=False):
     if not q:
       q = self.get_value_from_request('q', False)
     if q:
+      ### Get Model of Queryset
+
+      ### Add searchable fields from searched model to searchable_fields
       searchable_fields = ['name', 'title', 'description']
-      if hasattr(attributes, 'searchable_fields'):
-        searchable_fields += attributes.searchable_fields
-      attributes = self.filter_queryset_by_fields(attributes, searchable_fields, q)
-    return attributes
+      if hasattr(queryset.model, 'searchable_fields'):
+        searchable_fields += queryset.model.searchable_fields
+      return self.filter_queryset_by_fields(queryset, searchable_fields, q)
+    return queryset
+    
+  
+  # def get_attribute_model(self, attribute):
+  #   """
+  #   Retrieve the model of a specific attribute.
+  #   """
+  #   if not self.model:
+  #     self.get_model()
+  #   return self.model._meta.get_field(attribute).related_model
   
   def render_attribute(self, attribute, format='html'):
     """ Returns the attribute as string.
@@ -224,7 +325,7 @@ class JsonUtils(View):
       rendered_attribute = str(attribute)
     return rendered_attribute
 
-  def return_response(self):
+  def return_response(self, **kwargs):
     """
     Prepare and return a structured JSON response.
     """
@@ -235,6 +336,8 @@ class JsonUtils(View):
       "messages": self.messages.get(),
       "payload": self.payload,
     }
+    for key, value in kwargs.items():
+      response_data[key] = value
     if self.request.user.is_staff:
       response_data["__meta"] = {
         "model": str(self.model) if self.model else self.model,
@@ -261,7 +364,7 @@ class JsonUtils(View):
         response_data['__meta']['request']['q'] = self.get_value_from_request('q')
     return JsonResponse(response_data)
   
-  def get_unused_related_objects(self, model, instance, related_field_name, extra_filters=None):
+  def get_unused_related_objects(self, model, exclude_queryset=None, extra_filters=None):
     """
     Retrieve all related objects for a model's field that are not associated with the given instance.
 
@@ -277,25 +380,21 @@ class JsonUtils(View):
     Raises:
         ValueError: If the related_field_name is invalid for the given model.
     """
-    # Validate the related_field_name
-    if not hasattr(instance, related_field_name):
-      raise ValueError(f"'{related_field_name}' is not a valid field for '{model.__name__}'.")
-
-    # Get the related manager for the field
-    related_manager = getattr(instance, related_field_name)
-
-    # Get the primary key of related objects that are already associated
-    used_related_ids = related_manager.values_list('pk', flat=True)
-
     # Query the related model for objects not in the used IDs
-    related_model = related_manager.model
-    unused_related_objects = related_model.objects.exclude(pk__in=used_related_ids)
-
+    queryset = model.objects.all()
+    if exclude_queryset:
+      # Fetch the primary keys of the related objects that are already used 
+      # and exclude them from the queryset
+      used_related_ids = exclude_queryset.values_list('pk', flat=True)
+      queryset = queryset.exclude(pk__in=used_related_ids)
+    # Apply default filters
+    for filter in ['filter_status', 'filter_visibility']:
+      if hasattr(self, filter):
+        queryset = getattr(self, filter)(queryset)
     # Apply additional filters if provided
     if extra_filters:
-      unused_related_objects = unused_related_objects.filter(**extra_filters)
-
-    return unused_related_objects
+      queryset = queryset.filter(**extra_filters)
+    return queryset
 
   def filter_queryset_by_fields(self, queryset, searchable_fields, q):
     """
@@ -317,21 +416,23 @@ class JsonUtils(View):
     """
     if not q:
       return queryset  # Return unfiltered queryset if no search term is provided
-
     model = queryset.model
     query = Q()
-
     # Get all valid field names for the model
     valid_field_names = [f.name for f in model._meta.get_fields()]
-
+    tried_fields = 0
     for field_name in searchable_fields:
       # Skip non-existent fields
       if field_name not in valid_field_names:
+        tried_fields += 1
+        if tried_fields == len(searchable_fields):
+          # All fields have been tried, but no matching field has been found. 
+          self.messages.add(_("no valid field found for search query: {} after {} tries").format(searchable_fields, str(tried_fields)), "debug")
+          # Return an empty queryset
+          return model.objects.none()
         continue
-
       # Get the field definition
       field = next((f for f in model._meta.get_fields() if f.name == field_name), None)
-
       # Handle different field types
       if isinstance(field, (ForeignKey, OneToOneField)):
         # Search related models
@@ -349,3 +450,20 @@ class JsonUtils(View):
 
     return queryset.filter(query)
 
+  def get_defaults(self, model=None, fields={}):
+    """
+    Get default values for a model.
+    """
+    if not model:
+      model = self.get_model()
+    defaults = {}
+    for field in model._meta.get_fields():
+      if field.is_relation:
+        continue
+      if hasattr(field, 'default') and field.default != models.NOT_PROVIDED:
+        defaults[field.name] = field.default
+    if 'user' in [f.name for f in model._meta.get_fields()]:
+      defaults['user'] = self.request.user
+    for field in fields:
+      defaults[field] = fields[field]
+    return defaults

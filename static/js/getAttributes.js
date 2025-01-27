@@ -1,3 +1,19 @@
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === name + "=") {
+              cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+              break;
+          }
+      }
+  }
+  return cookieValue;
+}
+
+
 /**
  * Display a message in the messages-placeholder element.
  * 
@@ -25,25 +41,19 @@ function showMessage(type, message) {
  * @param {string} after - Optional HTML to append to each payload item.
  * @param {string} [csrf_token] - Optional CSRF token for the request.
  */
-async function getAttributes(url, attribute, before = '', after = '', csrf_token = null) {
+async function getAttributes(url, attribute, before = '', after = '', func_csrf_token = csrf_token) {
   console.log(`Fetching data from ${url} for ${attribute}`);
-
-  // Controleer of csrf_token als parameter is meegegeven; anders gebruik de constante
-  if (!csrf_token && typeof csrf_token === 'undefined') {
-    if (typeof CSRF_TOKEN !== 'undefined') {
-      csrf_token = CSRF_TOKEN;
-    }
-  }
-
   try {
     // Stel de headers in, inclusief de CSRF-token als deze bestaat
     const headers = {
       'Content-Type': 'application/json',
     };
-
     if (csrf_token) {
-      headers['X-CSRFToken'] = csrf_token;
+      headers['x-csrftoken'] = func_csrf_token;
+      headers['X-backup-CSRFToken'] = getCookie("csrftoken");
     }
+    console.log("CSRF Token in JavaScript:", csrf_token);
+
 
     // Fetch de data van de opgegeven URL
     const response = await fetch(url, {
@@ -85,8 +95,10 @@ async function getAttributes(url, attribute, before = '', after = '', csrf_token
     }
 
     // Toon een succesbericht als dat aanwezig is
-    if (data.message) {
-      showMessage('success', data.message);
+    if (data.messages && data.messages.length > 0) {
+      data.messages.forEach(message => {
+        showMessage(message.level, message.message);
+      });
     }
   } catch (error) {
     // Verwerk netwerkfouten en andere onverwachte problemen

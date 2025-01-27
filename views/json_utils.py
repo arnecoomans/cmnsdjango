@@ -1,6 +1,6 @@
 from django.views import View
 from django.conf import settings
-from django.middleware.csrf import CsrfViewMiddleware
+from django.middleware.csrf import get_token
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.apps import apps
@@ -107,17 +107,35 @@ class JsonUtils(View):
     Raises:
       PermissionDenied: If the CSRF token is missing or invalid.
     """
-    self.csrf_token = self.get_value_from_request("csrfmiddlewaretoken", default=None)
-    if not self.csrf_token:
+    # self.messages.add(self.request.META)
+    client_token = (
+      self.request.META.get("HTTP_X_CSRFTOKEN")
+      or self.request.POST.get("csrfmiddlewaretoken")
+      or self.request.GET.get("csrfmiddlewaretoken")
+    )
+    # if not client_token:
+    #   raise PermissionDenied("Missing CSRF token.")
+    server_token = get_token(self.request)
+
+
+    if client_token != server_token:
       if settings.DEBUG:
-        self.messages.add("No CSRF token and CSRF token check skipped in DEBUG mode.", "debug")
-        return
+        self.messages.add(_("CSRF token validation failed: {} is not {}").format(client_token, server_token), "debug")
       else:
-        raise PermissionDenied(_('csrf token is missing or invalid.').capitalize())
-    try:
-      CsrfViewMiddleware().process_view(self.request, None, (), {})
-    except PermissionDenied:
-      raise PermissionDenied(_('invalid csrf token.').capitalize())
+        # Geef een fout in productie
+        raise PermissionDenied("Invalid CSRF token.")
+    # try:
+    #     # Valideer de CSRF-token
+    #     # CsrfViewMiddleware().process_view(self.request, None, (), {})
+    #     CsrfViewMiddleware().process_view(self.request, None, (), {}, get_response=None)
+    # except Exception as e:
+    #     if settings.DEBUG:
+    #         # In DEBUG-modus loggen we alleen een waarschuwing
+    #         self.messages.add(_("CSRF token validation failed: {}").format(str(e)), "debug")
+    #     else:
+    #         # Buiten DEBUG-modus gooien we een fout
+    #         # from django.core.exceptions import PermissionDenied
+    #         raise PermissionDenied("Invalid CSRF token.")
 
   ''' Model Functions '''
   def get_model(self, model_name=None, action='read'):

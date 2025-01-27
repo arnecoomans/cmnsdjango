@@ -37,8 +37,15 @@ class Messages(View):
         list of dict: The filtered list of messages.
     """
     if getattr(settings, 'DEBUG', False) and self.user_is_staff:
-      return self.messages
-    return self.exclude(level='debug')
+      messages = self.messages
+    else:
+      messages = self.exclude(level='debug')
+    # Translate Level 'Debug' to 'Info' and prepend message with 'DEBUG: '
+    for msg in messages:
+      if msg['level'] == 'debug':
+        msg['level'] = 'secondary'
+        msg['message'] = 'DEBUG: ' + msg['message']
+    return messages
 
   def exclude(self, level=None, message=None):
     """

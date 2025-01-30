@@ -130,7 +130,7 @@ class JsonUtils(View):
         self.messages.add(_("CSRF token validation failed, but failure is ignored due to DEBUG status"), "debug")
       else:
         # Geef een fout in productie
-        raise PermissionDenied("Invalid CSRF token.")
+        raise PermissionDenied("Invalid CSRF token." + str(client_token) + ' - ' str(server_token))
     # try:
     #     # Valideer de CSRF-token
     #     # CsrfViewMiddleware().process_view(self.request, None, (), {})

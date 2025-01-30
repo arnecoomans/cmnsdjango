@@ -6,7 +6,7 @@
 # Restarts the application with supervisorctl
 # based on the directory name (first part before the first dot)
 # Author: Arne Coomans
-# Version: 1.1.0
+# Version: 1.2.0
 
 # Change to the script's directory
 cd "$(dirname "$0")"
@@ -33,30 +33,33 @@ fi
 
 # Check for submodules
 if [ -f .gitmodules ]; then
+  echo "Checking for submodule updates..."
   git submodule update --init --recursive
 
-  # Zorg dat submodules een branch volgen en niet in detached HEAD blijven
+  # Ensure submodules track a branch instead of being in a detached HEAD state
   git submodule foreach --recursive 'git checkout $(git config -f $toplevel/.gitmodules submodule.$name.branch || echo main)'
 
-  # Werk submodules bij naar de nieuwste commit op hun gekoppelde branch
+  # Update submodules to the latest commit on their tracked branch
   git submodule update --remote --merge
 
-  # Controleer of er wijzigingen zijn in submodules
-  submodule_output=$(git diff --submodule)
+  # Detect changes in submodules
+  submodule_changes=$(git diff --submodule=log)
 
-  # Optioneel: Log wijzigingen
-  echo "$submodule_output"
-
+  # If there are changes in submodules, update again to ensure consistency
   git submodule update --init --recursive
-  if [ -z "$submodule_output" ]; then
+  if [ -z "$submodule_changes" ]; then
     echo "No updates detected in submodules."
   else
     echo "Submodule updates detected."
   fi
 fi
 
-# Check if output contains 'migration' or 'static' or 'requirements.txt'
-if echo "$git_output" | grep -q -e 'migration' -e 'static' -e 'requirements.txt' || [ -n "$submodule_output" ]; then
+# Combine changes from main repo and submodules
+all_changes="$git_output
+$submodule_changes"
+
+# Check if any relevant files have changed (migrations, static files, or requirements.txt)
+if echo "$all_changes" | grep -q -e 'migration' -e 'static' -e 'requirements.txt'; then
   echo "Changes detected in requirements, migrations, static files, or submodules. Activating virtual environment..."
   
   # Activate virtual environment in .venv directory in the current directory
@@ -64,7 +67,7 @@ if echo "$git_output" | grep -q -e 'migration' -e 'static' -e 'requirements.txt'
   echo "Virtual environment activated."
 
   # Install any new requirements
-  if echo "$git_output" | grep -q 'requirements.txt'; then
+  if echo "$all_changes" | grep -q 'requirements.txt'; then
     echo "Installing new requirements..."
     python -m pip install --upgrade pip
     python -m pip install -r requirements.txt
@@ -73,8 +76,8 @@ if echo "$git_output" | grep -q -e 'migration' -e 'static' -e 'requirements.txt'
     echo "No changes in requirements detected. Skipping requirement installation."
   fi
 
-  # Check for 'migration' keyword in git output
-  if echo "$git_output" | grep -q 'migration'; then
+  # Run migrations if needed
+  if echo "$all_changes" | grep -q 'migration'; then
     echo "Running migrations..."
     python manage.py migrate
     echo "Migrations complete."
@@ -82,8 +85,8 @@ if echo "$git_output" | grep -q -e 'migration' -e 'static' -e 'requirements.txt'
     echo "No changes in migrations detected. Skipping migration."
   fi
   
-  # Check for 'static' keyword in git output
-  if echo "$git_output" | grep -q 'static'; then
+  # Collect static files if needed
+  if echo "$all_changes" | grep -q 'static'; then
     echo "Collecting static files..."
     python manage.py collectstatic --noinput
     echo "Static files collected."

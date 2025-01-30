@@ -7,10 +7,12 @@ from markdown import markdown
 from django.db import models
 from django.utils.text import slugify
 from django.utils.html import escape
-
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from cmnsdjango.views.json_utils import JsonUtils
 
+@method_decorator(csrf_exempt, name='dispatch')
 class JsonSetAttribute(JsonUtils):
   def get(self, request, *args, **kwargs):
     return self.set_attribute(request, *args, **kwargs)
@@ -112,9 +114,9 @@ class JsonSetAttribute(JsonUtils):
         if self.get_new_value('key') == 'id':
           return search_model.objects.get(id=self.get_new_value('value'))
         elif self.get_new_value('key') == 'slug':
-          return search_model.objects.get(slug=self.get_new_value('slug'))
+          return search_model.objects.get(slug=self.get_new_value('value'))
       except search_model.DoesNotExist:
-        raise ValueError(_("related {} object not found with {} = {}").format(search_model.__name__, self.get_new_value('key'), self.get_new_value('value')).capitalize())
+        raise ValueError(_("related {} object not found with {}: {}").format(search_model.__name__, self.get_new_value('key'), self.get_new_value('value')).capitalize())
     # Search or create a new object based on name, title or value parameter
     if self.get_value_from_request('name', False):
       search_key = 'name'
@@ -123,7 +125,7 @@ class JsonSetAttribute(JsonUtils):
       search_key = 'title'
       search_value = self.get_value_from_request('title')
     else:
-      raise ValueError(_("No valid identifier found in new value"))
+      raise ValueError(_("No valid identifier found in new value ") + str(self.get_new_value()))
     try:
       related_obj = search_model.objects.get_or_create(**{search_key + '__iexact': search_value}, defaults=self.get_defaults(search_model, {'slug': slugify(search_value)}))
       if related_obj[1]:

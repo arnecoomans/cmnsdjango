@@ -66,19 +66,27 @@ class JsonUtils(View):
     Returns:
         str or None: The value associated with the key, or the default value if not found.
     """
-    if key in self.kwargs:
-      return self.kwargs[key]
-    value = self.request.GET.get(key, None)
-    if value:
-      return value
-    value = self.request.POST.get(key, None)
-    if value:
-      return value
+    value = None
     header_key = f"HTTP_{key.replace('-', '_').upper()}"
-    value = self.request.META.get(header_key, None)
-    if value:
-      return value
-    return default
+    jsondata = {}
+    try:
+      jsondata = json.loads(self.request.body)
+    except:
+      pass
+    try:
+      if key in self.kwargs:
+        value = self.kwargs[key]
+      elif key in self.request.GET:
+        value = self.request.GET.get(key, None)
+      elif key in self.request.POST:
+        value = self.request.POST.get(key, None)
+      elif key in jsondata:
+        value = jsondata.get(key)
+      elif header_key in self.request.META:
+        value = self.request.META.get(header_key, None)
+    except Exception as e:
+      self.messages.add(_("error when fetching value: {}").format(str(e)).capitalize(), "debug")
+    return value if value else default
 
   def get_new_value(self, field=None):
     # Get the value for the request parameters. 
@@ -89,14 +97,15 @@ class JsonUtils(View):
         return self.new_value[field]
       return self.new_value
     # Loop through the possible keys to get the value
-    for key in ['set_id', 'set_slug', 'get_id', 'get_slug', 'obj_id', 'obj_slug', 'value']:
+    for key in ['set_id', 'get_id', 'obj_id',
+                'set_slug', 'get_slug', 'obj_slug',
+                'value', 'set_value', 'get_value', 'obj_value']:
       value = self.get_value_from_request(key, False)
       if value:
         for word in ['set', 'get', 'obj']:
           key = key.replace(f"{ word }_" , '')  
         self.new_value = {'key': key, 'value': value,}
         return self.get_new_value(field) # Recursively call the function to get the value if field is specified
-
   ''' Security Functions ''' 
   def check_csrf_token(self):
     """
@@ -107,20 +116,18 @@ class JsonUtils(View):
     Raises:
       PermissionDenied: If the CSRF token is missing or invalid.
     """
-    # self.messages.add(self.request.META)
     client_token = (
       self.request.META.get("HTTP_X_CSRFTOKEN")
       or self.request.POST.get("csrfmiddlewaretoken")
       or self.request.GET.get("csrfmiddlewaretoken")
+      or None
     )
-    # if not client_token:
-    #   raise PermissionDenied("Missing CSRF token.")
-    server_token = get_token(self.request)
-
+    server_token = self.request.COOKIES.get(getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'), None)
+    # server_token = get_token(self.request)
 
     if client_token != server_token:
       if settings.DEBUG:
-        self.messages.add(_("CSRF token validation failed: {} is not {}").format(client_token, server_token), "debug")
+        self.messages.add(_("CSRF token validation failed, but failure is ignored due to DEBUG status"), "debug")
       else:
         # Geef een fout in productie
         raise PermissionDenied("Invalid CSRF token.")
@@ -304,8 +311,6 @@ class JsonUtils(View):
     if not q:
       q = self.get_value_from_request('q', False)
     if q:
-      ### Get Model of Queryset
-
       ### Add searchable fields from searched model to searchable_fields
       searchable_fields = ['name', 'title', 'description']
       if hasattr(queryset.model, 'searchable_fields'):
@@ -322,21 +327,26 @@ class JsonUtils(View):
   #     self.get_model()
   #   return self.model._meta.get_field(attribute).related_model
   
-  def render_attribute(self, attribute, format='html'):
+  def render_attribute(self, attribute, format='html', context={}):
     """ Returns the attribute as string.
         If a template exists in templates/objects, the string will be 
         formatted by the template.
     """
-    model_name = attribute.__class__.__name__.lower()
+    # If model is related, set model name
+    if isinstance(attribute, models.Model):
+      model_name = attribute.__class__.__name__.lower()
+    else:
+      model_name = self.get_field_name().name.lower()
     rendered_attribute = None
     try:
       # Try to find the attribute template to render in templates/objects/
-      rendered_attribute = render_to_string(f'objects/{ model_name }.{ format }', {model_name: attribute})
+      context = context | {model_name: attribute}
+      rendered_attribute = render_to_string(f'objects/{ model_name }.{ format }', context)
       if format == 'json':
         rendered_attribute = json.loads(rendered_attribute)
     except TemplateDoesNotExist:
       # If the template does not exist, return the string representation of the attribute
-      self.messages.add(_("{} template for {} not found in objects/").format(format, model_name).capitalize(), "debug")
+      self.messages.add(_("{} template for {} not found in objects/ when rendering {}").format(format, model_name, self.get_field_name().name).capitalize(), "debug")
       rendered_attribute = str(attribute)
     except Exception as e:
       self.messages.add(_("error rendering attribute: {}").format(e).capitalize(), "debug")
@@ -485,3 +495,13 @@ class JsonUtils(View):
     for field in fields:
       defaults[field] = fields[field]
     return defaults
+
+class DebugView(View):
+  def get(self, request, *args, **kwargs):
+    server_token = get_token(request)
+    cookie_token = request.COOKIES.get('csrftoken', None)
+    return JsonResponse({
+      'server_token': server_token,
+      'cookie_token': cookie_token,
+      'message': 'Tokens logged',
+    })

@@ -49,11 +49,9 @@ async function getAttributes(url, attribute, before = '', after = '', func_csrf_
       'Content-Type': 'application/json',
     };
     if (csrf_token) {
-      headers['x-csrftoken'] = func_csrf_token;
-      headers['X-backup-CSRFToken'] = getCookie("csrftoken");
+      headers['x-csrftoken'] = getCookie("csrftoken");
+      // headers['X-csrftoken'] = func_csrf_token;
     }
-    console.log("CSRF Token in JavaScript:", csrf_token);
-
 
     // Fetch de data van de opgegeven URL
     const response = await fetch(url, {

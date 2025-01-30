@@ -45,6 +45,8 @@ class Messages(View):
       if msg['level'] == 'debug':
         msg['level'] = 'secondary'
         msg['message'] = 'DEBUG: ' + msg['message']
+      elif msg['level'] == 'error':
+        msg['level'] = 'warning'
     return messages
 
   def exclude(self, level=None, message=None):

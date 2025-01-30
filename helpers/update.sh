@@ -5,6 +5,7 @@
 # installs new requirements, runs migrations, and collects static files
 # Restarts the application with supervisorctl
 # based on the directory name (first part before the first dot)
+#
 # Author: Arne Coomans
 # Version: 1.2.0
 

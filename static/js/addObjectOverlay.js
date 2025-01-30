@@ -45,6 +45,9 @@ $(document).ready(function () {
         url: $input.data("suggestion-url"),
         method: "GET",
         data: { q: query },
+        headers: {
+          "X-CSRFToken": getCSRFToken(),
+        },
         success: function (data) {
           $suggestions.empty();
           data.payload.forEach((item) => {

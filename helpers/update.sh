@@ -33,11 +33,21 @@ fi
 
 # Check for submodules
 if [ -f .gitmodules ]; then
-  echo "Checking for submodule updates..."
   git submodule update --init --recursive
-  git submodule foreach git pull origin main 2>&1
+
+  # Zorg dat submodules een branch volgen en niet in detached HEAD blijven
+  git submodule foreach --recursive 'git checkout $(git config -f $toplevel/.gitmodules submodule.$name.branch || echo main)'
+
+  # Werk submodules bij naar de nieuwste commit op hun gekoppelde branch
+  git submodule update --remote --merge
+
+  # Controleer of er wijzigingen zijn in submodules
   submodule_output=$(git diff --submodule)
 
+  # Optioneel: Log wijzigingen
+  echo "$submodule_output"
+
+  git submodule update --init --recursive
   if [ -z "$submodule_output" ]; then
     echo "No updates detected in submodules."
   else

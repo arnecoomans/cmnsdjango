@@ -44,6 +44,7 @@ class GetJsonAddObjectForm(JsonUtils):
       'related_field': self.get_field_name().name,
       'object': self.get_object(),
       'title': _('add new {}').format(field).capitalize(),
+      'attribute': self.get_field_name().verbose_name,
     }
     try:
       self.payload.append(render_to_string('sections/add_object_overlay.html', template_context))

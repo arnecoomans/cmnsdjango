@@ -78,6 +78,7 @@ $(document).ready(function () {
             response.messages.forEach(message => {
               showMessage(message.level, message.message);
             });
+            getAttributes($input.data("success-url"), $input.data('attribute'), before = '', after = '')
           }
           $overlay.hide();
         },

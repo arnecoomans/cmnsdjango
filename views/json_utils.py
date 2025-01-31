@@ -9,6 +9,8 @@ from django.template.exceptions import TemplateDoesNotExist
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Q
 from django.db import models
+from django.contrib.auth.context_processors import PermWrapper
+
 
 # from django.db.models.fields.related import ForeignKey, ManyToManyField, OneToOneField
 from django.db.models import (
@@ -340,7 +342,11 @@ class JsonUtils(View):
     rendered_attribute = None
     try:
       # Try to find the attribute template to render in templates/objects/
-      context = context | {model_name: attribute}
+      context = context | {
+        model_name: attribute,
+        'perms': PermWrapper(self.request.user),
+        self.get_object().__class__.__name__.lower(): self.get_object(),
+      }
       rendered_attribute = render_to_string(f'objects/{ model_name }.{ format }', context)
       if format == 'json':
         rendered_attribute = json.loads(rendered_attribute)

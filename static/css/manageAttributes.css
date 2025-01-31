@@ -1,0 +1,8 @@
+.attribute > span.delete-attribute {
+  visibility: hidden;
+}
+.attribute:hover > span.delete-attribute {
+  visibility: visible;
+  background-color: yellow;
+  cursor: pointer;
+}

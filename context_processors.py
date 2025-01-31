@@ -27,6 +27,8 @@ def setting_data(request):
     'project_name': getattr(settings, 'SITE_NAME', 'A CMNS Django Project'),
     'meta_description': getattr(settings, 'META_DESCRIPTION', 'A CMNS Django Project'),#
     'language_code': getattr(settings, 'LANGUAGE_CODE', 'en'),
+
+    'disallow_delete_attribute': getattr(settings, 'DISALLOW_DELETE_ATTRIBUTE', False),
     
     'ajax_load_actionlist': getattr(settings, 'AJAX_LOAD_ACTIONLIST', default_ajax_load),
     'ajax_load_comments': getattr(settings, 'AJAX_LOAD_COMMENTS', default_ajax_load),

@@ -9,7 +9,6 @@ $(document).ready(function () {
       url: overlayUrl,
       method: "GET",
       success: function (data) {
-        console.log(data);
         $overlay.html(data.payload);
         $overlay.show();
         // Re-bind event listeners aan nieuwe elementen

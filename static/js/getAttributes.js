@@ -1,20 +1,3 @@
-/**
- * Display a message in the messages-placeholder element.
- * 
- * @param {string} type - The type of alert (e.g., 'success', 'danger').
- * @param {string} message - The message to display.
- */
-function showMessage(type, message) {
-  const messagesPlaceholder = document.getElementById('messages-placeholder');
-  if (messagesPlaceholder) {
-    messagesPlaceholder.innerHTML += `
-      <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    `;
-  }
-}
 
 /**
  * Fetch attributes from a URL and add the payload to a target element.

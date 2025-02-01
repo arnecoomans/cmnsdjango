@@ -30,6 +30,7 @@ $(document).ready(function () {
   // Functie om alle functionaliteit in de overlay opnieuw te binden
   function setupOverlayEvents() {
     const $input = $("#attributeInput");
+    const $createButton = $("#createAttribute");
     const $suggestions = $("#suggestions");
 
     // Haal suggesties op terwijl de gebruiker typt
@@ -72,6 +73,41 @@ $(document).ready(function () {
           "X-CSRFToken": getCSRFToken(),
         },
         data: JSON.stringify({ obj_slug: slug }),
+        contentType: "application/json",
+        success: function (response) {
+          if (response.messages && response.messages.length > 0) {
+            response.messages.forEach(message => {
+              showMessage(message.level, message.message);
+            });
+            getAttributes($input.data("success-url"), $input.data('attribute'), before = '', after = '')
+          }
+          $overlay.hide();
+        },
+        error: function () {
+          showMessage('danger', 'Failed to add person.');
+          if (response.messages && response.messages.length > 0) {
+            response.messages.forEach(message => {
+              showMessage(message.level, message.message);
+            });
+          }
+        },
+      });
+    });
+
+    $createButton.on("click", function () {
+      const query = $input.val();
+      if (query.length < 2) {
+        showMessage('danger', 'Query too short.');
+        return;
+      }
+
+      $.ajax({
+        url: $input.data("submit-url"),
+        method: "POST",
+        headers: {
+          "X-CSRFToken": getCSRFToken(),
+        },
+        data: JSON.stringify({ obj_value: query }),
         contentType: "application/json",
         success: function (response) {
           if (response.messages && response.messages.length > 0) {

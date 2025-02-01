@@ -35,16 +35,22 @@ class JsonGetSuggestions(JsonUtils):
         response['traceback'] = traceback.format_exc()
       return JsonResponse(response, status=500)
 
+from archive.models import Tag
+
 class GetJsonAddObjectForm(JsonUtils):
   def get(self, request, *args, **kwargs):
     field = self.get_field_model().__name__.lower()
+    # Fetch specific model configuration
+    allow_create_attribute = getattr(self.get_field_model(field), 'allow_create_attribute', True)
+    # Set context for AddObjectForm
     template_context = {
-      'model': self.kwargs['model'],
-      'field': field,
-      'related_field': self.get_field_name().name,
-      'object': self.get_object(),
-      'title': _('add new {}').format(field).capitalize(),
-      'attribute': self.get_field_name().verbose_name,
+      'model': self.kwargs['model'], # Model name, required for URL building
+      'field': field, # Field name, required for URL building
+      'related_field': self.get_field_name().name, # Related field name, required for URL building
+      'object': self.get_object(), # Object to add a new related object to
+      'title': _('add new {}').format(field).capitalize(), # Title of the overlay
+      'attribute': self.get_field_name().verbose_name, 
+      'allow_create_attribute': allow_create_attribute,
     }
     try:
       self.payload.append(render_to_string('sections/add_object_overlay.html', template_context))

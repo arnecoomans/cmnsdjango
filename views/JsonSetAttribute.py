@@ -109,29 +109,68 @@ class JsonSetAttribute(JsonUtils):
     search_model = self.get_model(action='set')._meta.get_field(self.get_field_name().name).related_model
     # if id or slug is set, look for the object or create an error
     #@TODO: Add Parent Check if field has attribute parent
-    if self.get_new_value():
+    #@BUG This doesnt work for creating values...
+    new_value = self.get_new_value()
+    # If key or slug is mentioned in new_value.keys(), assume it is safe
+    # to search the object by key or slug
+    if new_value['key'] in ['id', 'slug']:
       try:
-        if self.get_new_value('key') == 'id':
-          return search_model.objects.get(id=self.get_new_value('value'))
-        elif self.get_new_value('key') == 'slug':
-          return search_model.objects.get(slug=self.get_new_value('value'))
+        return search_model.objects.get(**{new_value['key']: new_value['value']})
       except search_model.DoesNotExist:
-        raise ValueError(_("related {} object not found with {}: {}").format(search_model.__name__, self.get_new_value('key'), self.get_new_value('value')).capitalize())
-    # Search or create a new object based on name, title or value parameter
-    if self.get_value_from_request('name', False):
-      search_key = 'name'
-      search_value = self.get_value_from_request('name')
-    elif self.get_value_from_request('title', False):
-      search_key = 'title'
-      search_value = self.get_value_from_request('title')
+        raise ValueError(_("related {} object not found with {}: {}").format(search_model.__name__, new_value['key'], new_value['value']).capitalize())
+    elif new_value['key'] in ['value', 'name' 'title']:
+      # Find the field to search for
+      target_field = None
+      target_fields = ['name', 'title']
+      for field in target_fields:
+        if field in [field.name for field in search_model._meta.get_fields()]:
+          target_field = field
+          break
+      if not target_field:
+        raise ValueError(_("No valid field found to search for related object").capitalize())
+      try:
+        print(target_field + '__iexact' + ' = ' + new_value['value'])
+        print(new_value['value'])
+        defaults = self.get_defaults(search_model, {
+          'slug': slugify(new_value['value']),
+          target_field: new_value['value']  
+          })
+        related_obj = search_model.objects.get_or_create(
+          **{target_field + '__iexact': new_value['value']},
+          defaults=defaults)
+        print(str(related_obj))
+        if related_obj[1]:
+          self.messages.add(_("Created new {} with {}").format(search_model, related_obj[0]), 'success')
+        return related_obj[0]
+      except search_model.DoesNotExist:
+        raise ValueError(_("related object not found with {} = {}").format(new_value['key'], new_value['value']))
+      except Exception as e: 
+        raise ValueError(_("Error when creating object: {}").format(e))      
     else:
-      raise ValueError(_("No valid identifier found in new value ") + str(self.get_new_value()))
-    try:
-      related_obj = search_model.objects.get_or_create(**{search_key + '__iexact': search_value}, defaults=self.get_defaults(search_model, {'slug': slugify(search_value)}))
-      if related_obj[1]:
-        self.messages.add(_("Created new {} with {}").format(search_model, related_obj[0]), 'success')
-      return related_obj[0]
-    except search_model.DoesNotExist:
-      raise ValueError(_("related object not found with {} = {}").format(search_key, search_value))
-    except Exception as e:
-      raise ValueError(_("Error when creating object: {}").format(e))
+      raise ValueError(_("No valid identifier found in new value ").capitalize())
+    # if self.get_new_value():
+    #   try:
+    #     if self.get_new_value('key') == 'id':
+    #       return search_model.objects.get(id=self.get_new_value('value'))
+    #     elif self.get_new_value('key') == 'slug':
+    #       return search_model.objects.get(slug=self.get_new_value('value'))
+    #   except search_model.DoesNotExist:
+    #     raise ValueError(_("related {} object not found with {}: {}").format(search_model.__name__, self.get_new_value('key'), self.get_new_value('value')).capitalize())
+    # Search or create a new object based on name, title or value parameter
+    # if self.get_value_from_request('name', False):
+    #   search_key = 'name'
+    #   search_value = self.get_value_from_request('name')
+    # elif self.get_value_from_request('title', False):
+    #   search_key = 'title'
+    #   search_value = self.get_value_from_request('title')
+    # else:
+    #   raise ValueError("[3x312] " + _("No valid identifier found in new value ") + str(self.get_new_value()))
+    # try:
+    #   related_obj = search_model.objects.get_or_create(**{search_key + '__iexact': search_value}, defaults=self.get_defaults(search_model, {'slug': slugify(search_value)}))
+    #   if related_obj[1]:
+    #     self.messages.add(_("Created new {} with {}").format(search_model, related_obj[0]), 'success')
+    #   return related_obj[0]
+    # except search_model.DoesNotExist:
+    #   raise ValueError(_("related object not found with {} = {}").format(search_key, search_value))
+    # except Exception as e:
+    #   raise ValueError(_("Error when creating object: {}").format(e))

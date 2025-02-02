@@ -131,7 +131,6 @@ class JsonUtils(View):
       if settings.DEBUG:
         self.messages.add(_("CSRF token validation failed, but failure is ignored due to DEBUG status"), "debug")
       else:
-        # Geef een fout in productie
         raise PermissionDenied("Invalid CSRF token." + str(client_token) + ' - ' + str(server_token))
     
 
@@ -324,14 +323,6 @@ class JsonUtils(View):
       return self.filter_queryset_by_fields(queryset, searchable_fields, q)
     return queryset
     
-  
-  # def get_attribute_model(self, attribute):
-  #   """
-  #   Retrieve the model of a specific attribute.
-  #   """
-  #   if not self.model:
-  #     self.get_model()
-  #   return self.model._meta.get_field(attribute).related_model
   
   def render_attribute(self, attribute, format='html', context={}):
     """ Returns the attribute as string.

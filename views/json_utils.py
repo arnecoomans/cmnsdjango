@@ -153,6 +153,7 @@ class JsonUtils(View):
     """
     if self.model:
       return self.model
+    self.action = action
     # Get the model name from the request
     model_name = model_name if model_name else self.get_value_from_request('model')
     if not model_name:
@@ -174,16 +175,19 @@ class JsonUtils(View):
       elif len(matching_models) > 1:
         raise ValueError(_("multiple models with the name '{}' were found. specify 'app_label.modelname' instead.".format({model_name})).capitalize())
       model = matching_models[0]
+      self.model = model
       """ Authentication check
           Raise ValueError if the model does not allow access via the 'allow_read_attribute' attribute """
       if getattr(model, f'allow_{action}_attribute', getattr(settings, 'ALLOW{action.upper()}_attribute', False)) is False:
         raise ValueError(_("{} access to the model '{}' is not allowed".format(action, model_name)).capitalize())
-      elif str(getattr(model, 'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower()[:4] == 'auth' and not self.request.user.is_authenticated:
+      elif str(getattr(model, f'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower()[:4] == 'auth' and not self.request.user.is_authenticated:
         raise ValueError(_("{} access to the model '{}' is not allowed for unauthenticated users".format(action, model_name)).capitalize())
-      elif str(getattr(model, 'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower()[:5] == 'staff' and not self.request.user.is_staff:
+      elif str(getattr(model, f'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower() == 'staff' and not self.request.user.is_staff:
         raise ValueError(_("{} access to the model '{}' is not allowed for non-staff users".format(action, model_name)).capitalize())
+      elif str(getattr(model, f'allow_{action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower() == 'self' and not self.get_object().user == self.request.user:
+        self.model = None
+        raise ValueError(_("{} access to the model '{}' is is only allowed for object user".format(action, model_name)).capitalize())
       """ Authentication check passed: set model """
-      self.model = model
       return model
     except ValueError as e:
       raise ValueError(_('error when accessing model: {}.').format(e).capitalize())
@@ -198,7 +202,11 @@ class JsonUtils(View):
     model = self.get_model()
     pk = self.get_value_from_request('pk')
     slug = self.get_value_from_request('slug')
-    if not pk and not slug:
+    user = self.request.user if 'for-self' in self.request.resolver_match.url_name else None
+    if 'for-self' in self.request.resolver_match.url_name:
+     if not user.is_authenticated:
+       raise ValueError(_('unauthenticated users are not allowed to access this object.').capitalize())
+    elif not pk and not slug:
       raise ValueError(_('either pk or slug parameter must be provided to retrieve an object.').capitalize())
     try:
       if pk and slug:
@@ -207,6 +215,13 @@ class JsonUtils(View):
         obj = model.objects.filter(pk=pk)
       elif slug:
         obj = model.objects.filter(slug=slug)
+      elif 'for-self' in self.request.resolver_match.url_name:
+        if not user.is_authenticated:
+          raise ValueError(_('unauthenticated users are not allowed to access this object.').capitalize())
+        elif str(getattr(model, f'allow_{self.action}_attribute', getattr(settings, 'ALLOW_{action.upper()}_attribute', False))).lower() == 'self':
+          obj = model.objects.filter(user=user)
+        else:
+          raise ValueError(_('unable to retrieve object without key or slug.').capitalize())
       else:
         raise ValueError(_('unable to determine the object retrieval criteria.').capitalize())
       if hasattr(self, 'filter_status'):

@@ -108,6 +108,8 @@ class JsonUtils(View):
           key = key.replace(f"{ word }_" , '')  
         self.new_value = {'key': key, 'value': value,}
         return self.get_new_value(field) # Recursively call the function to get the value if field is specified
+  
+  
   ''' Security Functions ''' 
   def check_csrf_token(self):
     """
@@ -125,26 +127,13 @@ class JsonUtils(View):
       or None
     )
     server_token = self.request.COOKIES.get(getattr(settings, 'CSRF_COOKIE_NAME', 'csrftoken'), None)
-    # server_token = get_token(self.request)
-
     if client_token != server_token:
       if settings.DEBUG:
         self.messages.add(_("CSRF token validation failed, but failure is ignored due to DEBUG status"), "debug")
       else:
         # Geef een fout in productie
         raise PermissionDenied("Invalid CSRF token." + str(client_token) + ' - ' + str(server_token))
-    # try:
-    #     # Valideer de CSRF-token
-    #     # CsrfViewMiddleware().process_view(self.request, None, (), {})
-    #     CsrfViewMiddleware().process_view(self.request, None, (), {}, get_response=None)
-    # except Exception as e:
-    #     if settings.DEBUG:
-    #         # In DEBUG-modus loggen we alleen een waarschuwing
-    #         self.messages.add(_("CSRF token validation failed: {}").format(str(e)), "debug")
-    #     else:
-    #         # Buiten DEBUG-modus gooien we een fout
-    #         # from django.core.exceptions import PermissionDenied
-    #         raise PermissionDenied("Invalid CSRF token.")
+    
 
   ''' Model Functions '''
   def get_model(self, model_name=None, action='read'):

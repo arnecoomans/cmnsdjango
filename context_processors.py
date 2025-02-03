@@ -30,6 +30,7 @@ def setting_data(request):
 
     'disallow_delete_attribute': getattr(settings, 'DISALLOW_DELETE_ATTRIBUTE', False),
     
+    'ajax_load_attributes': getattr(settings, 'AJAX_LOAD_ATTRIBUTES', default_ajax_load),
     'ajax_load_actionlist': getattr(settings, 'AJAX_LOAD_ACTIONLIST', default_ajax_load),
     'ajax_load_comments': getattr(settings, 'AJAX_LOAD_COMMENTS', default_ajax_load),
     'ajax_load_tags': getattr(settings, 'AJAX_LOAD_TAGS', default_ajax_load),

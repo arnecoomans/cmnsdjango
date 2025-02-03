@@ -31,3 +31,11 @@ def highlight(value, query):
     return f"<span class='highlight'>{match.group()}</span>"  # Preserve original case
 
   return regex.sub(replace_match, value)
+
+@register.filter
+def split(value, delimiter=','):
+    """
+    Split een string op het gegeven scheidingsteken.
+    Gebruik: {{ value|split:"," }}
+    """
+    return value.split(delimiter)

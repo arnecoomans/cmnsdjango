@@ -331,27 +331,41 @@ class JsonUtils(View):
     """
     # If model is related, set model name
     if isinstance(attribute, models.Model):
-      model_name = attribute.__class__.__name__.lower()
+      field_name = attribute.__class__.__name__.lower()
     else:
-      model_name = self.get_field_name().name.lower()
+      field_name = self.get_field_name().name.lower()
     rendered_attribute = None
+    object_name = self.get_object().__class__.__name__.lower()
+    context = context | {
+      'field_name': field_name,
+      field_name: attribute,
+      # 'perms': PermWrapper(self.request.user),
+      'request': self.request,
+      self.get_object().__class__.__name__.lower(): self.get_object(),
+      'object_name': object_name,
+      'debug': {
+        'A': self.get_object().__class__.__name__.lower(),
+        'B': self.get_object(),
+        'C': object_name,
+        'D': field_name,
+      }
+    }
     try:
       # Try to find the attribute template to render in templates/objects/
-      context = context | {
-        model_name: attribute,
-        'perms': PermWrapper(self.request.user),
-        self.get_object().__class__.__name__.lower(): self.get_object(),
-      }
-      rendered_attribute = render_to_string(f'objects/{ model_name }.{ format }', context)
-      if format == 'json':
-        rendered_attribute = json.loads(rendered_attribute)
+      rendered_attribute = render_to_string(f'objects/{ field_name }.{ format }', context) 
     except TemplateDoesNotExist:
-      # If the template does not exist, return the string representation of the attribute
-      self.messages.add(_("{} template for {} not found in objects/ when rendering {}").format(format, model_name, self.get_field_name().name).capitalize(), "debug")
-      rendered_attribute = str(attribute)
+      # Try again with extended file name
+      try:
+        rendered_attribute = render_to_string(f'objects/{ object_name }_{ field_name }.{ format }', context)
+      except TemplateDoesNotExist:
+        # If the template does not exist, return the string representation of the attribute
+        self.messages.add(_("{} template for {} not found in objects/ when rendering {}").format(format, field_name, self.get_field_name().name).capitalize(), "debug")
+        rendered_attribute = str(attribute)
     except Exception as e:
       self.messages.add(_("error rendering attribute: {}").format(e).capitalize(), "debug")
       rendered_attribute = str(attribute)
+    if format == 'json':
+      rendered_attribute = json.loads(rendered_attribute)
     return rendered_attribute
 
   def return_response(self, **kwargs):

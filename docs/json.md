@@ -13,30 +13,7 @@ cmnsdjango submodule into your project. Documentation of this should
 be in the [/docs/installation.md](https://github.com/arnecoomans/cmnsdjango/tree/main/docs/installation.md) file.
 
 ### Add context processor to your project
-In order for some functionality to work, you need to add the [context 
-processors](https://docs.djangoproject.com/en/5.1/ref/templates/api/#playing-with-context-objects) to your project. This offers some functionality at the
-templating level that is useful when using cmnsdjango JSON handling, 
-such as setting default values for loading content via Async calls.
 
-
-In your settings.py, add the following line in the correct location:
-
-
-your_project/settings.py:
-```
-TEMPLATES = [
-    {
-        [...]
-        'OPTIONS': {
-            'context_processors': [
-                [...]
-                'cmnsdjango.context_processors.setting_data',
-            ],
-            [...]
-        },
-    },
-]
-```
 
 
 ### Load views into your urls.py

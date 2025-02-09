@@ -14,6 +14,11 @@ function showMessage(type, message) {
       </div>
     `;
   }
+  if (type == 'danger') {
+    console.error(message);
+  } else {
+    console.log(message);
+  }
 }
 
 

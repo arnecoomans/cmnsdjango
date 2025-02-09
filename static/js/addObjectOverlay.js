@@ -19,6 +19,7 @@ $(document).ready(function () {
         showMessage('danger', 'Failed to load overlay content.');
       },
     });
+    return false;
   });
 
   // Sluit de overlay

@@ -39,21 +39,33 @@ from archive.models import Tag
 
 class GetJsonAddObjectForm(JsonUtils):
   def get(self, request, *args, **kwargs):
-    field = self.get_field_model().__name__.lower()
+    try:
+      field = self.get_field_model().__name__.lower()
+    except AttributeError:
+      #field = self.get_model()._meta.get_field(self.get_field_name().name)
+      #Image._meta.get_field('description')
+      field_name = self.get_field_name().name
+      field = self.get_model()._meta.get_field(field_name).__class__.__name__.lower()
+      
     # Fetch specific model configuration
     allow_create_attribute = getattr(self.get_field_model(field), 'allow_create_attribute', True)
+
     # Set context for AddObjectForm
     template_context = {
       'model': self.kwargs['model'], # Model name, required for URL building
-      'field': field, # Field name, required for URL building
+      'field': type(field), # Field name, required for URL building
       'related_field': self.get_field_name().name, # Related field name, required for URL building
       'object': self.get_object(), # Object to add a new related object to
       'title': _('add new {}').format(field).capitalize(), # Title of the overlay
       'attribute': self.get_field_name().verbose_name, 
       'allow_create_attribute': allow_create_attribute,
     }
+    ''' Try to render the specific form for the field, if that fails, render the generic form '''
     try:
-      self.payload.append(render_to_string('sections/add_object_overlay.html', template_context))
-    except Exception as e:
-      raise ValueError(_('could not render form: {}').format(str(e)).capitalize())
+      self.payload.append(render_to_string(f'sections/add_{ field}_overlay.html', template_context))
+    except:
+      try:
+        self.payload.append(render_to_string('sections/add_object_overlay.html', template_context))
+      except Exception as e:
+        raise ValueError(_('could not render form: {}').format(str(e)).capitalize())
     return self.return_response()

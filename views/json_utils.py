@@ -259,7 +259,10 @@ class JsonUtils(View):
       return self.field_model
     if not field:
       field = self.get_value_from_request('field')
-    self.field_model = self.get_object()._meta.get_field(field).related_model
+    if self.is_related_field(field):
+      self.field_model = self.get_object()._meta.get_field(field).related_model
+    else:
+      self.field_model = self.get_object()._meta.get_field(field)
     return self.get_field_model(field) # Recursively call the function to get the value if field is specified
   
   def get_field_value(self, field=None):
@@ -354,6 +357,7 @@ class JsonUtils(View):
       except TemplateDoesNotExist:
         # If the template does not exist, return the string representation of the attribute
         self.messages.add(_("{} template for {} not found in objects/ when rendering {}").format(format, field_name, self.get_field_name().name).capitalize(), "debug")
+        # self.messages.add("Tried {} and {}".format(f'objects/{ field_name }.{ format }', f'objects/{ object_name }_{ field_name }.{ format }'), "debug")
         rendered_attribute = str(attribute)
     except Exception as e:
       self.messages.add(_("error rendering attribute: {}").format(e).capitalize(), "debug")
@@ -382,9 +386,11 @@ class JsonUtils(View):
       response_data["__meta"] = {
         "model": str(self.model) if self.model else self.model,
         "object": str(self.object) if self.object else self.object,
-        "attribute": self.get_value_from_request('attribute'),
+        "field_name": str(self.get_field_name().name),
+        "field_model": str(self.get_field_model()),
+        "field_value": str(self.get_field_value()),
         "debug": settings.DEBUG,
-                "request_user": {
+        "request_user": {
           "id": self.request.user.id,
           "username": self.request.user.username,
           "is_staff": self.request.user.is_staff,

@@ -15,11 +15,12 @@ function showMessage(level, message) {
     </div>
   `;
   messageContainer.insertAdjacentHTML('beforeend', alertHtml);
-  if (level == 'danger') {
+  if (level === 'danger') {
     console.error(message);
   } else {
     console.log(message);
   }
+  applyFadeOut();  // Automatically apply fade-out to newly added messages
 }
 
 /**
@@ -33,6 +34,43 @@ function processResponse(response) {
   }
 }
 
+/**
+ * Applies fade-out effect to alert messages after a certain duration.
+ */
+function applyFadeOut() {
+  const duration = 10 * 1000;  // 10 seconds before fade-out
+
+  document.querySelectorAll('.alert').forEach(alertElement => {
+    // Check if fade-out has already been set to prevent duplication
+    if (!alertElement.dataset.fadeOutSet) {
+      alertElement.dataset.fadeOutSet = true;
+
+      setTimeout(() => {
+        alertElement.style.transition = "opacity 1s";
+        alertElement.style.opacity = "0";
+
+        // Remove the element after the fade-out completes
+        setTimeout(() => {
+          const message = alertElement.textContent.replace('(Undo)', '').trim();
+          console.log(`Removing alert "${message}"`);
+          alertElement.remove();
+        }, 1000);  // 1 second for the fade-out effect
+      }, duration);
+    }
+  });
+}
+
+/**
+ * Automatically capitalize the first letter of each word in inputs with class 'autocapitalize'.
+ */
+function setupAutoCapitalize() {
+  document.querySelectorAll('input.autocapitalize').forEach(input => {
+    input.addEventListener('input', function () {
+      const capitalizedVal = this.value.replace(/\b\w/g, char => char.toUpperCase());
+      this.value = capitalizedVal;
+    });
+  });
+}
 
 /**
  * Returns the default HTTP method for a given action.
@@ -40,6 +78,7 @@ function processResponse(response) {
 function getDefaultMethod(action) {
   return action === "setAttribute" ? "POST" : "GET";
 }
+
 /**
  * Parses data-fields from a JSON-like string in data attributes.
  */
@@ -52,6 +91,7 @@ function parseDataFields(fields) {
     return {};
   }
 }
+
 /**
  * Core AJAX function to handle requests with CSRF protection and standardized error handling.
  *
@@ -83,7 +123,7 @@ async function sendAjaxRequest(url, method = "GET", data = {}) {
     return await response.json();
   } catch (error) {
     console.error(`Error during AJAX call to ${url}:`, error);
-    throw error;  // Let specific functions handle the error display if needed
+    throw error;
   }
 }
 
@@ -96,3 +136,19 @@ function getCSRFToken() {
     .find(row => row.startsWith("csrftoken="))
     ?.split("=")[1];
 }
+
+/**
+ * Setup event listeners after DOM content is loaded.
+ */
+document.addEventListener("DOMContentLoaded", function () {
+  // Apply fade-out effect to alerts already on the page
+  applyFadeOut();
+
+  // Auto-capitalize input fields
+  setupAutoCapitalize();
+  
+  // Reapply fade-out logic after AJAX content is loaded using MutationObserver
+  const observer = new MutationObserver(applyFadeOut);
+  observer.observe(document.getElementById("messages-placeholder"), { childList: true });
+});
+

@@ -1,6 +1,10 @@
 $(document).ready(function () {
   const $overlay = $("#attributeOverlay");
-
+  // Sluit de overlay
+  $(document).on("click", "#closeOverlay", function () {
+    $overlay.hide();
+  });
+  
   // Open de overlay en haal inhoud op via JSON
   $(".addOverlayButton").on("click", function () {
     obj = $(this);

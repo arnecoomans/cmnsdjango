@@ -1,25 +1,25 @@
-/**
- * Display a message in the messages-placeholder element.
- * 
- * @param {string} type - The type of alert (e.g., 'success', 'danger').
- * @param {string} message - The message to display.
- */
-function showMessage(type, message) {
-  const messagesPlaceholder = document.getElementById('messages-placeholder');
-  if (messagesPlaceholder) {
-    messagesPlaceholder.innerHTML += `
-      <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    `;
-  }
-  if (type == 'danger') {
-    console.error(message);
-  } else {
-    console.log(message);
-  }
-}
+// /**
+//  * Display a message in the messages-placeholder element.
+//  * 
+//  * @param {string} type - The type of alert (e.g., 'success', 'danger').
+//  * @param {string} message - The message to display.
+//  */
+// function showMessage(type, message) {
+//   const messagesPlaceholder = document.getElementById('messages-placeholder');
+//   if (messagesPlaceholder) {
+//     messagesPlaceholder.innerHTML += `
+//       <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+//         ${message}
+//         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+//       </div>
+//     `;
+//   }
+//   if (type == 'danger') {
+//     console.error(message);
+//   } else {
+//     console.log(message);
+//   }
+// }
 
 
 // Function to apply fade-out to alerts
@@ -47,6 +47,13 @@ function applyFadeOut() {
 }
 
 $(document).ready(function() {
+  // Select all alert messages and set a timer to fade them out
+  applyFadeOut();
+  // Reapply fade-out logic after AJAX content is loaded
+  $(document).ajaxComplete(function() {
+    applyFadeOut();
+  });
+
   /**  Auto-Capitalize
    * Auto-capitalize the first letter of each word in an input field
    * with the class 'autocapitalize'
@@ -59,13 +66,9 @@ $(document).ready(function() {
     $(this).val(capitalizedVal);
   });
 
-  // Select all alert messages and set a timer to fade them out
-  $(document).ready(function() {
-    applyFadeOut();
-  });
-
+  
   // Reapply fade-out logic after AJAX content is loaded
   $(document).ajaxComplete(function() {
     applyFadeOut();
-});
+  });
 });

@@ -108,7 +108,7 @@ class JsonUtils(View):
           key = key.replace(f"{ word }_" , '')  
         self.new_value = {'key': key, 'value': value,}
         return self.get_new_value(field) # Recursively call the function to get the value if field is specified
-  
+    raise ValueError(_("no valid identifier found in new value").capitalize())
   
   ''' Security Functions ''' 
   def check_csrf_token(self):
@@ -339,16 +339,10 @@ class JsonUtils(View):
     context = context | {
       'field_name': field_name,
       field_name: attribute,
-      # 'perms': PermWrapper(self.request.user),
+      'perms': PermWrapper(self.request.user),
       'request': self.request,
       self.get_object().__class__.__name__.lower(): self.get_object(),
       'object_name': object_name,
-      'debug': {
-        'A': self.get_object().__class__.__name__.lower(),
-        'B': self.get_object(),
-        'C': object_name,
-        'D': field_name,
-      }
     }
     try:
       # Try to find the attribute template to render in templates/objects/
@@ -365,7 +359,10 @@ class JsonUtils(View):
       self.messages.add(_("error rendering attribute: {}").format(e).capitalize(), "debug")
       rendered_attribute = str(attribute)
     if format == 'json':
-      rendered_attribute = json.loads(rendered_attribute)
+      try:
+        rendered_attribute = json.loads(rendered_attribute)
+      except Exception as e:
+        raise ValueError(_("error when parsing JSON: {}").format(str(e)).capitalize())
     return rendered_attribute
 
   def return_response(self, **kwargs):

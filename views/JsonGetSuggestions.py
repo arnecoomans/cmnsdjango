@@ -25,10 +25,10 @@ class JsonGetSuggestions(JsonUtils):
         self.payload.append(self.render_attribute(suggestion, format='json', context={'query': self.get_value_from_request('q')}))
       return self.return_response()
     except PermissionDenied as e:
-        return JsonResponse({"error": str(e)}, status=403)
+        return JsonResponse({"[PermissionDenied error]": str(e)}, status=403)
     except ValueError as e:
       # Handle specific errors and return as JSON
-      return JsonResponse({"error": str(e)}, status=400)
+      return JsonResponse({"[ValueError": str(e)}, status=400)
     except Exception as e:
       response = {"error": _("an unexpected error occurred: {}").format(str(e))}
       if settings.DEBUG and self.request.user.is_staff:

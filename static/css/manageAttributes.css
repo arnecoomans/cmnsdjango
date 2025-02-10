@@ -1,8 +1,12 @@
-.attribute > span.delete-attribute {
+.attribute > span.clickable {
   visibility: hidden;
+  display: inline;
 }
-.attribute:hover > span.delete-attribute {
+.attribute:hover > span.clickable {
   visibility: visible;
   background-color: yellow;
   cursor: pointer;
+}
+.description.attribute > p {
+  display: inline;
 }

@@ -40,7 +40,7 @@ class JsonGetAttributes(JsonUtils):
           except:
             # If the queryset is not renderable, add a string representation
             # of the value to the payload
-            self.payload.append(self.render_attributes(str(values)))
+            self.payload.append(self.render_attribute(str(values)))
       return self.return_response()
     except PermissionDenied as e:
         return JsonResponse({"error": str(e)}, status=403)
